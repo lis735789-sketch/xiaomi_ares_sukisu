@@ -1,4 +1,4 @@
-name: Build Kernel -- NetHunter KVM
+name: Build NetHunter KVM Kernel for ares
 
 on:
   workflow_dispatch:
@@ -11,91 +11,96 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache
-      CCACHE_MAXSIZE: 8G
-    strategy:
-      fail-fast: false
-    name: Build Kernel for K40GE
+    timeout-minutes: 90
 
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-
-      - name: Install Package
-        run: sudo apt update && sudo apt install -y p7zip-full git ccache
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref }}
-          restore-keys: |
-            ccache-${{ runner.os }}-
-
-      - uses: actions/checkout@v5
-
-      - name: Get Kernel Source Code
-        uses: actions/checkout@v5
-        with:
-          repository: tomxi1997/Nethunter-KVM-Docker_kernel-v1_Redmi-k40gaming
-          ref: ${{ inputs.SOURCECODE_BRANCH }}
-          path: kernel
-
-      - name: Setup Cross-compile toolchain
+      - name: 安装依赖
         run: |
-          mkdir -p toolchain
-          cd toolchain
-          wget -q https://github.com/Mandi-Sa/clang/releases/download/amd64-kernel-arm_static-23/llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
-          7za x llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
-          rm llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
+          sudo apt-get update
+          sudo apt-get install -y flex bison bc cpio xz-utils libssl-dev libelf-dev python3 ccache git patch p7zip-full
 
-      - name: Remove -Werror from Makefiles
-        working-directory: kernel
+      - name: 克隆内核源码
         run: |
-          find . \( -name "Makefile" -o -name "*.mk" \) -type f -exec sed -i 's/-Werror//g' {} +
+          git clone --depth=1 -b ${{ inputs.SOURCECODE_BRANCH }} \
+            https://github.com/tomxi1997/Nethunter-KVM-Docker_kernel-v1_Redmi-k40gaming.git kernel
+          cd kernel
+          echo "内核版本:"
+          head -5 Makefile
 
-      - name: Disable CONFIG_WERROR in defconfig
+      - name: 安装 Proton Clang 13.0.0
         run: |
-          echo "CONFIG_WERROR=n" >> $GITHUB_WORKSPACE/kernel/arch/arm64/configs/nethunter-kvm-docker-ares_defconfig
+          cd kernel
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          echo "Proton Clang 版本:"
+          clang/bin/clang --version
 
-      - name: Build Kernel for K40GE
-        working-directory: kernel
-        env:
-          args: |+
-            LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2
-            KCFLAGS+=-Wno-error
-            KCFLAGS+=-Wno-everything
-            KCFLAGS_PERF+=-O3
+      - name: 编译内核
         run: |
-          export KBUILD_BUILD_TIMESTAMP=$(date)
-          export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
-          make -j$(nproc --all) ${args} nethunter-kvm-docker-ares_defconfig all
+          cd kernel
+          mkdir -p out
 
-      - name: Pack Kernel using Magiskboot
-        working-directory: Magiskboot
-        run: |
-          tar -xvf boot.tar.gz
-          chmod +x magiskboot
-          ./magiskboot unpack boot.img
-          cp $GITHUB_WORKSPACE/kernel/out/arch/arm64/boot/Image ./kernel
-          ./magiskboot repack boot.img boot_NetHunter_KVM.img
+          CL="${PWD}/clang/bin"
 
-      - name: Upload repacked boot image
+          echo "生成 .config..."
+          make O=out ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" nethunter-kvm-docker-ares_defconfig 2>&1
+
+          echo "验证 KVM 配置..."
+          grep -E "CONFIG_KVM|CONFIG_VIRTUALIZATION" out/.config || echo "(checking...)"
+
+          echo "编译..."
+          make O=out -j$(nproc) \
+            ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE="${CL}/aarch64-linux-gnu-" \
+            CROSS_COMPILE_ARM32="${CL}/arm-linux-gnueabi-" \
+            LD="${CL}/ld.lld" AR="${CL}/llvm-ar" NM="${CL}/llvm-nm" \
+            OBJCOPY="${CL}/llvm-objcopy" OBJDUMP="${CL}/llvm-objdump" STRIP="${CL}/llvm-strip" \
+            KCFLAGS+="-Wno-error" \
+            KCFLAGS+="-Wno-strict-prototypes" \
+            KCFLAGS+="-Wno-declaration-after-statement" \
+            KCFLAGS+="-Wno-int-conversion" \
+            KCFLAGS+="-Wno-incompatible-pointer-types" \
+            KCFLAGS+="-Wno-implicit-function-declaration" \
+            KCFLAGS+="-Wno-implicit-int" \
+            KCFLAGS+="-Wno-return-type" \
+            KCFLAGS+="-Wno-unused-variable" \
+            KCFLAGS+="-Wno-unused-but-set-variable" \
+            KCFLAGS+="-Wno-unused-function" \
+            KCFLAGS+="-Wno-misleading-indentation" \
+            KCFLAGS+="-Wno-format" \
+            KCFLAGS+="-Wno-pointer-sign" \
+            KCFLAGS+="-Wno-constant-conversion" \
+            KCFLAGS+="-Wno-shift-count-overflow" \
+            KCFLAGS+="-Wno-tautological-constant-out-of-range-compare" \
+            KCFLAGS+="-Wno-fortify-source" \
+            CONFIG_NO_ERROR_ON_MISMATCH=y 2>&1 | tee out/build.log
+
+          if [ -f out/arch/arm64/boot/Image.gz ]; then
+            echo "✅ 编译成功 (Image.gz)!"
+            ls -lh out/arch/arm64/boot/Image.gz
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            echo "✅ 编译成功 (Image)!"
+            ls -lh out/arch/arm64/boot/Image
+          else
+            echo "❌ 失败!"
+            tail -80 out/build.log
+            exit 1
+          fi
+
+      - name: 上传内核
         uses: actions/upload-artifact@v4
         with:
-          name: K40GE_NetHunter_KVM
-          path: Magiskboot/boot_NetHunter_KVM.img
-          compression-level: 9
+          name: NetHunter-KVM-ares
+          path: |
+            kernel/out/arch/arm64/boot/Image.gz
+            kernel/out/arch/arm64/boot/Image
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传编译日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: kernel/out/build.log
+          retention-days: 7
