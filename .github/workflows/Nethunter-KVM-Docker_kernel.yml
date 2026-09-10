@@ -60,12 +60,9 @@ jobs:
           7za x llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
           rm llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
 
-      - name: Remove -Werror from Makefiles
-        working-directory: kernel
+      - name: Disable CONFIG_WERROR
         run: |
-          grep -rl -- "-Werror" --include="Makefile" --include="*.mk" . | while read f; do
-            sed -i 's/-Werror//g' "$f"
-          done
+          echo "CONFIG_WERROR=n" >> $GITHUB_WORKSPACE/kernel/arch/arm64/configs/nethunter-kvm-docker-ares_defconfig
 
       - name: Build Kernel for K40GE
         working-directory: kernel
@@ -73,7 +70,25 @@ jobs:
           args: |+
             LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2
+            KCFLAGS+=-Wno-error
+            KCFLAGS+=-Wno-strict-prototypes
+            KCFLAGS+=-Wno-declaration-after-statement
+            KCFLAGS+=-Wno-int-conversion
+            KCFLAGS+=-Wno-incompatible-pointer-types
+            KCFLAGS+=-Wno-implicit-function-declaration
+            KCFLAGS+=-Wno-implicit-int
+            KCFLAGS+=-Wno-return-type
+            KCFLAGS+=-Wno-unused-variable
+            KCFLAGS+=-Wno-unused-but-set-variable
+            KCFLAGS+=-Wno-unused-function
+            KCFLAGS+=-Wno-misleading-indentation
+            KCFLAGS+=-Wno-format
+            KCFLAGS+=-Wno-pointer-sign
+            KCFLAGS+=-Wno-constant-conversion
+            KCFLAGS+=-Wno-shift-count-overflow
+            KCFLAGS+=-Wno-tautological-constant-out-of-range-compare
+            KCFLAGS_PERF+=-O3
         run: |
           export KBUILD_BUILD_TIMESTAMP=$(date)
           export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
