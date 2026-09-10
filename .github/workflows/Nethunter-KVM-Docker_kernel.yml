@@ -24,8 +24,6 @@ jobs:
           git clone --depth=1 -b ${{ inputs.SOURCECODE_BRANCH }} \
             https://github.com/tomxi1997/Nethunter-KVM-Docker_kernel-v1_Redmi-k40gaming.git kernel
           cd kernel
-          echo "内核版本:"
-          head -5 Makefile
 
       - name: 安装 Proton Clang 13.0.0
         run: |
@@ -55,24 +53,8 @@ jobs:
             CROSS_COMPILE_ARM32="${CL}/arm-linux-gnueabi-" \
             LD="${CL}/ld.lld" AR="${CL}/llvm-ar" NM="${CL}/llvm-nm" \
             OBJCOPY="${CL}/llvm-objcopy" OBJDUMP="${CL}/llvm-objdump" STRIP="${CL}/llvm-strip" \
+            CC_VERSION_TEXT="clang version 13.0.0" \
             KCFLAGS+="-Wno-error" \
-            KCFLAGS+="-Wno-strict-prototypes" \
-            KCFLAGS+="-Wno-declaration-after-statement" \
-            KCFLAGS+="-Wno-int-conversion" \
-            KCFLAGS+="-Wno-incompatible-pointer-types" \
-            KCFLAGS+="-Wno-implicit-function-declaration" \
-            KCFLAGS+="-Wno-implicit-int" \
-            KCFLAGS+="-Wno-return-type" \
-            KCFLAGS+="-Wno-unused-variable" \
-            KCFLAGS+="-Wno-unused-but-set-variable" \
-            KCFLAGS+="-Wno-unused-function" \
-            KCFLAGS+="-Wno-misleading-indentation" \
-            KCFLAGS+="-Wno-format" \
-            KCFLAGS+="-Wno-pointer-sign" \
-            KCFLAGS+="-Wno-constant-conversion" \
-            KCFLAGS+="-Wno-shift-count-overflow" \
-            KCFLAGS+="-Wno-tautological-constant-out-of-range-compare" \
-            KCFLAGS+="-Wno-fortify-source" \
             CONFIG_NO_ERROR_ON_MISMATCH=y 2>&1 | tee out/build.log
 
           if [ -f out/arch/arm64/boot/Image.gz ]; then
