@@ -1,0 +1,89 @@
+name: Build Kernel -- NetHunter KVM
+
+on:
+  workflow_dispatch:
+    inputs:
+      SOURCECODE_BRANCH:
+        description: '源码分支名称或修订版'
+        required: true
+        default: 'aex9'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      CCACHE_DIR: /home/runner/.ccache
+      CCACHE_MAXSIZE: 8G
+    strategy:
+      fail-fast: false
+    name: Build Kernel for K40GE
+
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Install Package
+        run: sudo apt update && sudo apt install -y p7zip-full git ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - uses: actions/checkout@v5
+
+      - name: Get Kernel Source Code
+        uses: actions/checkout@v5
+        with:
+          repository: tomxi1997/Nethunter-KVM-Docker_kernel-v1_Redmi-k40gaming
+          ref: ${{ inputs.SOURCECODE_BRANCH }}
+          path: kernel
+
+      - name: Setup Cross-compile toolchain
+        run: |
+          mkdir -p toolchain
+          cd toolchain
+          wget -q https://github.com/Mandi-Sa/clang/releases/download/amd64-kernel-arm_static-23/llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
+          7za x llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
+          rm llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
+
+      - name: Build Kernel for K40GE
+        working-directory: kernel
+        env:
+          args: |+
+            LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3
+        run: |
+          export KBUILD_BUILD_TIMESTAMP=$(date)
+          export PATH=/usr/lib/ccache:$GITHUB_WORKSPACE/toolchain/bin:$PATH
+          make -j$(nproc --all) ${args} nethunter-kvm-docker-ares_defconfig all
+
+      - name: Pack Kernel using Magiskboot
+        working-directory: Magiskboot
+        run: |
+          tar -xvf boot.tar.gz
+          chmod +x magiskboot
+          ./magiskboot unpack boot.img
+          cp $GITHUB_WORKSPACE/kernel/out/arch/arm64/boot/Image ./kernel
+          ./magiskboot repack boot.img boot_NetHunter_KVM.img
+
+      - name: Upload repacked boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: K40GE_NetHunter_KVM
+          path: Magiskboot/boot_NetHunter_KVM.img
+          compression-level: 9
