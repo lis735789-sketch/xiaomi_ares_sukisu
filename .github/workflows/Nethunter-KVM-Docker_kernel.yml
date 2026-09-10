@@ -60,6 +60,13 @@ jobs:
           7za x llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
           rm llvm23.0.0-binutils2.45.1_amd64-kernel-arm_static-20260224.7z
 
+      - name: Remove -Werror from Makefiles
+        working-directory: kernel
+        run: |
+          grep -rl -- "-Werror" --include="Makefile" --include="*.mk" . | while read f; do
+            sed -i 's/-Werror//g' "$f"
+          done
+
       - name: Build Kernel for K40GE
         working-directory: kernel
         env:
