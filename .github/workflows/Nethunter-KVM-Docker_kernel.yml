@@ -72,6 +72,8 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
             CC=clang LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2
             KCFLAGS+=-Wno-error
+            KCFLAGS+=-Wno-everything
+            KCFLAGS+=-Wno-fortify-source
             KCFLAGS+=-Wno-strict-prototypes
             KCFLAGS+=-Wno-declaration-after-statement
             KCFLAGS+=-Wno-int-conversion
