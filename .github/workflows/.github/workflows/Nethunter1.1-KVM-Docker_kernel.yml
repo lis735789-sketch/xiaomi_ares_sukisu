@@ -1,0 +1,88 @@
+name: Build NetHunter KVM Kernel for ares
+
+on:
+  workflow_dispatch:
+    inputs:
+      SOURCECODE_BRANCH:
+        description: '源码分支名称或修订版'
+        required: true
+        default: 'lxr'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex bison bc cpio xz-utils libssl-dev libelf-dev python3 ccache git patch p7zip-full
+
+      - name: 克隆内核源码
+        run: |
+          git clone --depth=1 -b ${{ inputs.SOURCECODE_BRANCH }} \
+            https://github.com/lis735789-sketch/android_kernel_aresin.git kernel
+          cd kernel
+
+      - name: 安装 Proton Clang 13.0.0
+        run: |
+          cd kernel
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          echo "Proton Clang 版本:"
+          clang/bin/clang --version
+
+      - name: 编译内核
+        run: |
+          cd kernel
+          mkdir -p out
+
+          CL="${PWD}/clang/bin"
+
+          echo "生成 .config..."
+          make O=out ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" nethunter-kvm-docker-ares_defconfig 2>&1
+
+          echo "验证 KVM 配置..."
+          grep -E "CONFIG_KVM|CONFIG_VIRTUALIZATION" out/.config || echo "(checking...)"
+
+          echo "编译..."
+          make O=out -j$(nproc) \
+            ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE="${CL}/aarch64-linux-gnu-" \
+            CROSS_COMPILE_ARM32="${CL}/arm-linux-gnueabi-" \
+            LD="${CL}/ld.lld" AR="${CL}/llvm-ar" NM="${CL}/llvm-nm" \
+            OBJCOPY="${CL}/llvm-objcopy" OBJDUMP="${CL}/llvm-objdump" STRIP="${CL}/llvm-strip" \
+            CC_VERSION_TEXT="clang version 13.0.0" \
+            KCFLAGS+="-Wno-error" \
+            CONFIG_NO_ERROR_ON_MISMATCH=y 2>&1 | tee out/build.log
+
+          if [ -f out/arch/arm64/boot/Image.gz ]; then
+            echo "✅ 编译成功 (Image.gz)!"
+            ls -lh out/arch/arm64/boot/Image.gz
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            echo "✅ 编译成功 (Image)!"
+            ls -lh out/arch/arm64/boot/Image
+          else
+            echo "❌ 失败!"
+            tail -80 out/build.log
+            exit 1
+          fi
+
+      - name: 上传内核
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetHunter1.1-KVM-ares
+          path: |
+            kernel/out/arch/arm64/boot/Image.gz
+            kernel/out/arch/arm64/boot/Image
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传编译日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: kernel/out/build.log
+          retention-days: 7
