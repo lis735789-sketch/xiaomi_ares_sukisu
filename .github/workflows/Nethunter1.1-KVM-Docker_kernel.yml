@@ -22,7 +22,7 @@ jobs:
       - name: 克隆内核源码
         run: |
           git clone --depth=1 -b ${{ inputs.SOURCECODE_BRANCH }} \
-            https://github.com/lis735789-sketch/android_kernel_aresin.git kernel
+            https://github.com/lis735789-sketch/android_kernel_aresin1.git kernel
           cd kernel
 
       - name: 安装 Proton Clang 13.0.0
