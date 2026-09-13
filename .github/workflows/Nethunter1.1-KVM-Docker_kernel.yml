@@ -40,7 +40,7 @@ jobs:
           CL="${PWD}/clang/bin"
 
           echo "生成 .config..."
-          make O=out ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" ares_user_defconfig 2>&1
+          make O=out ARCH=arm64 HOSTCC=gcc CC="${CL}/clang" kvm-docker_defconfig 2>&1
 
           echo "验证 KVM 配置..."
           grep -E "CONFIG_KVM|CONFIG_VIRTUALIZATION" out/.config || echo "(checking...)"
